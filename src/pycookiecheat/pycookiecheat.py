@@ -173,6 +173,33 @@ def get_linux_config(browser: str) -> dict:
     return config
 
 
+def get_win32_config(browser: str) -> dict:
+    """Get settings for getting Chrome/Chromium cookies on OSX.
+
+    Args:
+        browser: Either "Chrome" or "Chromium"
+    Returns:
+        Config dictionary for Chrome/Chromium cookie decryption
+
+    """
+    # Verify supported browser, fail early otherwise
+    if browser.lower() == "chrome":
+        import os
+        cookie_file = os.path.join(os.getenv('APPDATA', ''), r'..\Local\Google\Chrome\User Data\Default\Cookies')
+    else:
+        raise ValueError("Browser must be Chrome.")
+
+    # Set the default win32 password to satisfy some elif statements used later without needing platform specific
+    # changes in that area.
+    config = {
+        "my_pass": "None",
+        "iterations": 1,
+        "cookie_file": cookie_file,
+    }
+
+    return config
+
+
 def chrome_cookies(
     url: str,
     cookie_file: str = None,
@@ -197,6 +224,8 @@ def chrome_cookies(
         config = get_osx_config(browser)
     elif sys.platform.startswith("linux"):
         config = get_linux_config(browser)
+    elif sys.platform == "win32":
+        config = get_win32_config(browser)
     else:
         raise OSError("This script only works on OSX or Linux.")
 
@@ -216,14 +245,17 @@ def chrome_cookies(
     elif isinstance(config["my_pass"], str):
         config["my_pass"] = config["my_pass"].encode("utf8")
 
-    kdf = PBKDF2HMAC(
-        algorithm=SHA1(),
-        backend=default_backend(),
-        iterations=config["iterations"],
-        length=config["length"],
-        salt=config["salt"],
-    )
-    enc_key = kdf.derive(config["my_pass"])
+    if sys.platform == "win32":
+        test = "None"
+    else:
+        kdf = PBKDF2HMAC(
+            algorithm=SHA1(),
+            backend=default_backend(),
+            iterations=config["iterations"],
+            length=config["length"],
+            salt=config["salt"],
+        )
+        enc_key = kdf.derive(config["my_pass"])
 
     parsed_url = urllib.parse.urlparse(url)
     if parsed_url.scheme:
@@ -274,11 +306,20 @@ def chrome_cookies(
             # if there is a not encrypted value or if the encrypted value
             # doesn't start with the 'v1[01]' prefix, return v
             if val or (enc_val[:3] not in (b"v10", b"v11")):
-                pass
+                if sys.platform == "win32":
+                    # Must be win32 (on win32, all chrome cookies are encrypted)
+                    try:
+                        import win32crypt
+                    except ImportError:
+                        raise ImportError('win32crypt must be available to decrypt Chrome cookie on Windows')
+                    val = win32crypt.CryptUnprotectData(enc_val, None, None, None, 0)[1].decode("utf-8")
+                else:
+                    pass
             else:
                 val = chrome_decrypt(
                     enc_val, key=enc_key, init_vector=config["init_vector"]
                 )
+
             cookies[cookie_key] = val
             if curl_cookie_file:
                 # http://www.cookiecentral.com/faq/#3.5
@@ -295,6 +336,7 @@ def chrome_cookies(
                         ]
                     )
                 )
+
 
     conn.rollback()
 
