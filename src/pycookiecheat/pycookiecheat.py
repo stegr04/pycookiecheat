@@ -246,7 +246,7 @@ def chrome_cookies(
         config["my_pass"] = config["my_pass"].encode("utf8")
 
     if sys.platform == "win32":
-        test = "None"
+        pass
     else:
         kdf = PBKDF2HMAC(
             algorithm=SHA1(),
