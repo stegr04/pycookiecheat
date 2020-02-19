@@ -227,7 +227,7 @@ def chrome_cookies(
     elif sys.platform == "win32":
         config = get_win32_config(browser)
     else:
-        raise OSError("This script only works on OSX or Linux.")
+        raise OSError("This script works on OSX or Linux. Windows support is available for Chrome only.")
 
     config.update(
         {"init_vector": b" " * 16, "length": 16, "salt": b"saltysalt"}
